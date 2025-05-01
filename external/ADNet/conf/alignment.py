@@ -1,5 +1,5 @@
 import os
-from conf.base import Base
+from .base import Base
 
 class Alignment(Base):
     """
@@ -14,7 +14,7 @@ class Alignment(Base):
         self.nstack = 4
         self.loader_type = "alignment"
         self.data_definition = "300W" # COFW, 300W, WFLW
-        self.batch_size = 32
+        self.batch_size = 128
         self.channels = 3
         self.width = 256
         self.height = 256

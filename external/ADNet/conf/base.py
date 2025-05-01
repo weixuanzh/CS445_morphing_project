@@ -37,9 +37,9 @@ class Base:
         self.loader_type = "alignment"
 
         #train
-        self.batch_size = 32
-        self.val_batch_size = 32
-        self.test_batch_size = 32
+        self.batch_size = 128
+        self.val_batch_size = 128
+        self.test_batch_size = 128
         self.channels = 3
         self.width = 128
         self.height = 128
