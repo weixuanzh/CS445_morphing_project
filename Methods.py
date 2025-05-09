@@ -206,7 +206,7 @@ def get_mp_points(img):
         
     return np.array(facial_points)
 
-def Image_Morphing_Video(imgA,imgB,videoname='morph_video.mp4',point_selection='MANUAL'):
+def Image_Morphing_Video(imgA,imgB,videoname='morph_video.mp4',point_selection='MANUAL', adnet_ckpt_dir=None):
     possible_point_selections = ['MANUAL', 'MP', 'ADNET']
     
     if point_selection not in possible_point_selections:
@@ -242,8 +242,15 @@ def Image_Morphing_Video(imgA,imgB,videoname='morph_video.mp4',point_selection='
         points2 = np.vstack([mp_points_2,boundary_points])
         
     elif point_selection == 'ADNET':
-        #TODO?
-        print("Not Sure How to Get the ADNET DATA In?")
+        assert adnet_ckpt_dir is not None, "ADNet is used but its checkpoint directory is None!"
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        print("Using device: ", device)
+        net = initialize_net(adnet_ckpt_dir, device)
+        points1 = get_landmarks_ADNet(imgA, net, device)
+        points2 = get_landmarks_ADNet(imgB, net, device)
+        boundary = add_boundary_points(imgA.shape)
+        points1 = np.vstack([points1, boundary])
+        points2 = np.vstack([points2, boundary])
 
     if points1.shape[0] != points2.shape[0]:
         diff = abs(points1.shape[0] - points2.shape[0])
@@ -301,7 +308,7 @@ def Image_Morphing_Video(imgA,imgB,videoname='morph_video.mp4',point_selection='
     cap.release()
     cv2.destroyAllWindows()
 
-def Image_Morphing_Image(imgA,imgB,alpha=0.8,point_selection='MANUAL'):
+def Image_Morphing_Image(imgA,imgB,alpha=0.8,point_selection='MANUAL', adnet_ckpt_dir=None):
     possible_point_selections = ['MANUAL', 'MP', 'ADNET']
     
     if point_selection not in possible_point_selections:
@@ -336,8 +343,15 @@ def Image_Morphing_Image(imgA,imgB,alpha=0.8,point_selection='MANUAL'):
         points2 = np.vstack([mp_points_2,boundary_points])
         
     elif point_selection == 'ADNET':
-        #TODO?
-        print("Not Sure How to Get the ADNET DATA In?")
+        assert adnet_ckpt_dir is not None, "ADNet is used but its checkpoint directory is None!"
+        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        print("Using device: ", device)
+        net = initialize_net(adnet_ckpt_dir, device)
+        points1 = get_landmarks_ADNet(imgA, net, device)
+        points2 = get_landmarks_ADNet(imgB, net, device)
+        boundary = add_boundary_points(imgA.shape)
+        points1 = np.vstack([points1, boundary])
+        points2 = np.vstack([points2, boundary])
 
     if points1.shape[0] != points2.shape[0]:
         diff = abs(points1.shape[0] - points2.shape[0])
