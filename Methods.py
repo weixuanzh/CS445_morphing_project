@@ -8,18 +8,24 @@ import sys
 sys.path.append('./')
 # from external.ADNet.lib.backbone import stackedHGNetV1
 from external.ADNet.lib.backbone import stackedHGNetV1
-from external.ADNet.conf.alignment import Alignment
-import mediapipe as mp
+# from external.ADNet.conf.alignment import Alignment
+# import mediapipe as mp
 
-# matplotlib.use('TkAgg')
+matplotlib.use('TkAgg')
 
 def select_points(img, title="Select points"):
-    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # Convert for matplotlib
-    plt.imshow(img_rgb)
-    plt.title(title)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    fig, ax = plt.subplots()
+    ax.imshow(img_rgb)
+    ax.set_title(title)
+    plt.axis('on')
+
+    # ginput will now block and handle closing properly after Enter
     points = plt.ginput(n=-1, timeout=0)
-    plt.close()
+
+    plt.close(fig)  # Close the figure explicitly
     return np.array(points)
+
 
 def add_boundary_points(img_shape):
     h, w = img_shape[:2]
@@ -206,165 +212,103 @@ def get_mp_points(img):
         
     return np.array(facial_points)
 
-def Image_Morphing_Video(imgA,imgB,videoname='morph_video.mp4',point_selection='MANUAL', adnet_ckpt_dir=None, preview=True):
-    possible_point_selections = ['MANUAL', 'MP', 'ADNET']
+
+def Image_Morph(imgA, imgB,
+                point_selection='MANUAL',
+                alpha=0.5,
+                adnet_ckpt_dir=None,
+                output_image_path=None,
+                output_video_path=None):
+    """
+    Combines morph image and video generation in one unified function.
+    """
+    possible_methods = ['MANUAL', 'MP', 'ADNET']
+    if point_selection not in possible_methods:
+        raise ValueError(f"Invalid method. Choose from {possible_methods}")
     
-    if point_selection not in possible_point_selections:
-        print(f"Invalid point_selection method. Choose from: {possible_point_selections}")
-        return
-        
     if len(imgA.shape) != len(imgB.shape):
-        print("Both Images Aren't Using the Same Color Channels")
-        return
-
+        raise ValueError("Images must have the same number of channels")
+    
+    # Resize to match dimensions
     imgB = cv2.resize(imgB, (imgA.shape[1], imgA.shape[0]))
+    h, w, _ = imgA.shape
+    boundary = add_boundary_points(imgA.shape)
     
-    points1 = []
-    points2 = []
-    tri = []
-    boundary_points = add_boundary_points(imgA.shape)
-    h,w,_ = imgA.shape
-    
+    # --- Keypoint selection ---
     if point_selection == 'MANUAL':
-        points1 = np.vstack([select_points(imgA),boundary_points])
-        points2 = np.vstack([select_points(imgB),boundary_points])
-        
+        points1 = np.vstack([select_points(imgA, "Select keypoints for Image A"), boundary])
+        points2 = np.vstack([select_points(imgB, "Select keypoints for Image B"), boundary])
+    
     elif point_selection == 'MP':
-        mp_points_1 = get_mp_points(imgA)
-        if mp_points_1 is None:
-            print("imgA Has No Detectable Facial Structure, Please Use ADNET or MANUAL")
-            return None
-        mp_points_2 = get_mp_points(imgB)
-        if mp_points_2 is None:
-            print("imgB Has No Detectable Facial Structure, Please Use ADNET or MANUAL")
-            return None
-        points1 = np.vstack([mp_points_1,boundary_points])
-        points2 = np.vstack([mp_points_2,boundary_points])
-        
+        pts1 = get_mp_points(imgA)
+        pts2 = get_mp_points(imgB)
+        if pts1 is None or pts2 is None:
+            raise ValueError("Face landmarks not detected. Try MANUAL or ADNET.")
+        points1 = np.vstack([pts1, boundary])
+        points2 = np.vstack([pts2, boundary])
+    
     elif point_selection == 'ADNET':
-        assert adnet_ckpt_dir is not None, "ADNet is used but its checkpoint directory is None!"
-        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        print("Using device: ", device)
+        assert adnet_ckpt_dir is not None, "ADNet requires a checkpoint directory"
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         net = initialize_net(adnet_ckpt_dir, device)
-        points1 = get_landmarks_ADNet(imgA, net, device)
-        points2 = get_landmarks_ADNet(imgB, net, device)
-        boundary = add_boundary_points(imgA.shape)
-        points1 = np.vstack([points1, boundary])
-        points2 = np.vstack([points2, boundary])
+        pts1 = get_landmarks_ADNet(imgA, net, device)
+        pts2 = get_landmarks_ADNet(imgB, net, device)
+        points1 = np.vstack([pts1, boundary])
+        points2 = np.vstack([pts2, boundary])
 
+    # Pad to match lengths
     if points1.shape[0] != points2.shape[0]:
         diff = abs(points1.shape[0] - points2.shape[0])
         if points1.shape[0] < points2.shape[0]:
-            extra = points2[-diff:]
-            points1 = np.vstack([points1, extra])
+            points1 = np.vstack([points1, points2[-diff:]])
         else:
-            extra = points1[-diff:]
-            points2 = np.vstack([points2, extra])
+            points2 = np.vstack([points2, points1[-diff:]])
 
+    # Triangulation
     avg_points = (points1 + points2) / 2
     tri = Delaunay(avg_points)
-    
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video_out = cv2.VideoWriter(videoname, fourcc, 15.0, (w, h), isColor=True)
 
-    num_frames = 100  # Forward frames
-    frames = []
-    
-    for i, alpha in enumerate(np.linspace(0, 1, num_frames)):
-        print(f"Generating forward frame {i+1}/{num_frames}...")
-        frame = morph_images(imgA, imgB, points1, points2, tri, alpha)
-        frames.append(frame)
-    
-    for frame in frames:
-        video_out.write(frame)
-    
-    # Write backward frames (skip last frame to avoid repeated frame)
-    for frame in frames[-2::-1]:  # Start second to last frame, reverse
-        video_out.write(frame)
-    video_out.release()
-    print(f"video saved as {videoname} ")
-    
-    if preview:
-        cap = cv2.VideoCapture(videoname)
+    # Generate and optionally save the morph image
+    morph_img = morph_images(imgA, imgB, points1, points2, tri, alpha)
+    if output_image_path:
+        cv2.imwrite(output_image_path, morph_img)
+        print(f"[✓] Morph image saved to {output_image_path}")
 
-        if not cap.isOpened():
-            print("Error opening video file")
-        
-        print("Playing video... Press Enter in the terminal to exit.")
-        
-        while True:
-            ret, frame = cap.read()
-        
-            if not ret:
-                # If video ended, restart from beginning
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                continue
-        
-            cv2.imshow('Morph Video Preview', frame)
-        
-            # Check for keypress every 30ms
-            if cv2.waitKey(70) == 13:  # 13 is Enter key
-                break
-        
-        cap.release()
+    # Generate and optionally save a morph video
+    if output_video_path:
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        video_out = cv2.VideoWriter(output_video_path, fourcc, 15.0, (w, h), isColor=True)
+        frames = [morph_images(imgA, imgB, points1, points2, tri, a)
+                  for a in np.linspace(0, 1, 100)]
+        for frame in frames + frames[-2::-1]:
+            video_out.write(frame)
+        video_out.release()
+        print(f"[✓] Morph video saved to {output_video_path}")
+
+
+    return morph_img  # return for convenience
+
+def preview_video(video=str):
+    cap = cv2.VideoCapture(video)
+
+    if not cap.isOpened():
+        print("Error opening video file")
+
+    print("Playing video... Press Enter in the terminal to exit.")
+
+    while True:
+        ret, frame = cap.read()
+
+        if not ret:
+            # If video ended, restart from beginning
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            continue
+
+        cv2.imshow('Morph Video Preview', frame)
+
+        # Check for keypress every 30ms
+        if cv2.waitKey(70) == 13:  # 13 is Enter key
+            break
+
+    cap.release()
     cv2.destroyAllWindows()
-
-def Image_Morphing_Image(imgA,imgB,alpha=0.8,point_selection='MANUAL', adnet_ckpt_dir=None):
-    possible_point_selections = ['MANUAL', 'MP', 'ADNET']
-    
-    if point_selection not in possible_point_selections:
-        print(f"Invalid point_selection method. Choose from: {possible_point_selections}")
-        return
-        
-    if len(imgA.shape) != len(imgB.shape):
-        print("Both Images Aren't Using the Same Color Channels")
-        return
-
-    imgB = cv2.resize(imgB, (imgA.shape[1], imgA.shape[0]))
-    
-    points1 = []
-    points2 = []
-    tri = []
-    boundary_points = add_boundary_points(imgA.shape)
-    
-    if point_selection == 'MANUAL':
-        points1 = np.vstack([select_points(imgA),boundary_points])
-        points2 = np.vstack([select_points(imgB),boundary_points])
-        
-    elif point_selection == 'MP':
-        mp_points_1 = get_mp_points(imgA)
-        if mp_points_1 is None:
-            print("imgA Has No Detectable Facial Structure, Please Use ADNET or MANUAL")
-            return None
-        mp_points_2 = get_mp_points(imgB)
-        if mp_points_2 is None:
-            print("imgB Has No Detectable Facial Structure, Please Use ADNET or MANUAL")
-            return None
-        points1 = np.vstack([mp_points_1,boundary_points])
-        points2 = np.vstack([mp_points_2,boundary_points])
-        
-    elif point_selection == 'ADNET':
-        assert adnet_ckpt_dir is not None, "ADNet is used but its checkpoint directory is None!"
-        device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        print("Using device: ", device)
-        net = initialize_net(adnet_ckpt_dir, device)
-        points1 = get_landmarks_ADNet(imgA, net, device)
-        points2 = get_landmarks_ADNet(imgB, net, device)
-        boundary = add_boundary_points(imgA.shape)
-        points1 = np.vstack([points1, boundary])
-        points2 = np.vstack([points2, boundary])
-
-    if points1.shape[0] != points2.shape[0]:
-        diff = abs(points1.shape[0] - points2.shape[0])
-        if points1.shape[0] < points2.shape[0]:
-            extra = points2[-diff:]
-            points1 = np.vstack([points1, extra])
-        else:
-            extra = points1[-diff:]
-            points2 = np.vstack([points2, extra])
-        
-        
-    avg_points = (points1 + points2) / 2
-    tri = Delaunay(avg_points)
-
-    return morph_images(imgA, imgB, points1, points2, tri, alpha)
