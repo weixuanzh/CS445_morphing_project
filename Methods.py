@@ -206,7 +206,7 @@ def get_mp_points(img):
         
     return np.array(facial_points)
 
-def Image_Morphing_Video(imgA,imgB,videoname='morph_video.mp4',point_selection='MANUAL', adnet_ckpt_dir=None):
+def Image_Morphing_Video(imgA,imgB,videoname='morph_video.mp4',point_selection='MANUAL', adnet_ckpt_dir=None, preview=True):
     possible_point_selections = ['MANUAL', 'MP', 'ADNET']
     
     if point_selection not in possible_point_selections:
@@ -283,29 +283,30 @@ def Image_Morphing_Video(imgA,imgB,videoname='morph_video.mp4',point_selection='
         video_out.write(frame)
     video_out.release()
     print(f"video saved as {videoname} ")
+    
+    if preview:
+        cap = cv2.VideoCapture(videoname)
 
-    cap = cv2.VideoCapture(videoname)
-
-    if not cap.isOpened():
-        print("Error opening video file")
-    
-    print("Playing video... Press Enter in the terminal to exit.")
-    
-    while True:
-        ret, frame = cap.read()
-    
-        if not ret:
-            # If video ended, restart from beginning
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            continue
-    
-        cv2.imshow('Morph Video Preview', frame)
-    
-        # Check for keypress every 30ms
-        if cv2.waitKey(70) == 13:  # 13 is Enter key
-            break
-    
-    cap.release()
+        if not cap.isOpened():
+            print("Error opening video file")
+        
+        print("Playing video... Press Enter in the terminal to exit.")
+        
+        while True:
+            ret, frame = cap.read()
+        
+            if not ret:
+                # If video ended, restart from beginning
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                continue
+        
+            cv2.imshow('Morph Video Preview', frame)
+        
+            # Check for keypress every 30ms
+            if cv2.waitKey(70) == 13:  # 13 is Enter key
+                break
+        
+        cap.release()
     cv2.destroyAllWindows()
 
 def Image_Morphing_Image(imgA,imgB,alpha=0.8,point_selection='MANUAL', adnet_ckpt_dir=None):
