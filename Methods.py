@@ -6,10 +6,9 @@ import torch
 import matplotlib
 import sys
 sys.path.append('./')
-# from external.ADNet.lib.backbone import stackedHGNetV1
 from external.ADNet.lib.backbone import stackedHGNetV1
-# from external.ADNet.conf.alignment import Alignment
-# import mediapipe as mp
+from external.ADNet.conf.alignment import Alignment
+import mediapipe as mp
 
 matplotlib.use('TkAgg')
 
